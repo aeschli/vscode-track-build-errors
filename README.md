@@ -1,4 +1,4 @@
-# vscode-track-build-errors README
+# VSCode Build Log Tracker
 
 When working on the VSCode source code, many of us run `yarn watch` in an external terminal.
 
