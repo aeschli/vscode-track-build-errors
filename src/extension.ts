@@ -1,77 +1,140 @@
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as path from 'path';
 import * as util from 'util';
+
+type DiagnosticsCollector = { update(content: BuildLogContent): void; dispose(): void; };
+type BuildLogContent = { path: string, line: number, column: number, message: string }[];
+
+const buildLogWatchers: vscode.Disposable[] = [];
 
 export function activate(context: vscode.ExtensionContext) {
 
-	console.log('Congratulations, your extension "vscode-track-build-errors" is now active!');
+	console.log('Extension "vscode-track-build-errors" is now active');
 
-	updateRegisterWatchers();
-	vscode.workspace.onDidChangeWorkspaceFolders(_ => {
-		updateRegisterWatchers();
-	});
+	updateBuildLogWatchers();
+	vscode.workspace.onDidChangeWorkspaceFolders(_ => updateBuildLogWatchers());
 }
 
-const collections: { [outFilePath: string]: vscode.DiagnosticCollection } = {};
-const watchers: vscode.FileSystemWatcher[] = [];
-
-function updateRegisterWatchers() {
-	watchers.forEach(w => w.dispose());
-
-	for (const path in collections) {
-		const collection = collections[path];
-		collection.clear();
-		delete collections[path];
-	}
+function updateBuildLogWatchers(): void {
+	buildLogWatchers.forEach(w => w.dispose());
+	buildLogWatchers.length = 0;
 
 	if (vscode.workspace.workspaceFolders) {
 		for (const folder of vscode.workspace.workspaceFolders) {
-			const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, '.build/log'));
-			watchers.push(watcher);
-			watcher.onDidCreate(e => updateErrors(e, false));
-			watcher.onDidCreate(e => updateErrors(e, false));
-			watcher.onDidCreate(e => updateErrors(e, true));
+			if (folder.uri.scheme === 'file') {
+				buildLogWatchers.push(createBuildLogWatcher(folder));
+			};
 		}
 	}
 }
 
-function updateErrors(outFileUri: vscode.Uri, isDeleted = false) {
-	console.log('Reading ' + outFileUri.toString());
-	if (outFileUri.scheme !== 'file') {
-		return;
-	}
-	let collection = collections[outFileUri.path];
-	if (isDeleted) {
-		if (collection) {
-			collection.clear();
-			delete collections[outFileUri.path];
+function createBuildLogWatcher(folder: vscode.WorkspaceFolder): vscode.Disposable {
+	const outFilePath = path.join(folder.uri.fsPath, '.build', 'log');
+	const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, '.build/log'));
+	let collector: DiagnosticsCollector | undefined;
+
+	watcher.onDidCreate(readBuildLog);
+	watcher.onDidChange(readBuildLog);
+	watcher.onDidDelete(readBuildLog);
+
+	readBuildLog();
+
+	function disposeCollector() {
+		if (collector) {
+			collector.dispose();
+			collector = undefined;
 		}
-		return;
 	}
-	if (!collection) {
-		collection = vscode.languages.createDiagnosticCollection(outFileUri.path);
-		collections[outFileUri.path] = collection;
-	} else {
-		collection.clear();
-	}
-	util.promisify(fs.readFile)(outFileUri.fsPath).then(buffer => {
-		const problems = JSON.parse(buffer.toString());
-		if (Array.isArray(problems)) {
-			const diagnosticsByPath: { [path: string]: vscode.Diagnostic[] } = {};
-			for (let problem of problems) {
-				const { path, line, column, message } = problem;
-				if (typeof path === 'string' && typeof line === 'number' && typeof column === 'number' && typeof message === 'string') {
-					let ds = diagnosticsByPath[path];
-					if (!ds) {
-						ds = diagnosticsByPath[path] = [];
-					}
-					ds.push(new vscode.Diagnostic(new vscode.Range(line, column, line, column + 1), message));
+
+	function readBuildLog() {
+		util.promisify(fs.readFile)(outFilePath).then(buffer => {
+			try {
+				const problems = JSON.parse(buffer.toString());
+				if (!collector) {
+					collector = createDiagnosticsCollector(outFilePath);
 				}
+				collector.update(problems);
+			} catch (e) {
+				console.log('Error parsing ' + e.message);
+				disposeCollector();
 			}
-			collection.set()
+		}, e => {
+			disposeCollector();
+		});
+	}
+
+	return {
+		dispose() {
+			watcher.dispose();
+			disposeCollector();
+		}
+	};
+}
+
+
+function createDiagnosticsCollector(outFile: string): DiagnosticsCollector {
+
+	const collection = vscode.languages.createDiagnosticCollection(outFile);
+	const openDocuments: { [path: string]: boolean } = {};
+
+	let diagnosticsByPath: { [path: string]: vscode.Diagnostic[] } = {};
+
+	const onTextDocOpen = vscode.workspace.onDidOpenTextDocument(e => {
+		const uri = e.uri;
+		if (uri.scheme === 'file') {
+			collection.set(uri, []);
+			openDocuments[uri.fsPath] = true;
 		}
 	});
+	const onTextDocClose = vscode.workspace.onDidCloseTextDocument(e => {
+		const uri = e.uri;
+		if (uri.scheme === 'file') {
+			collection.set(uri, diagnosticsByPath[uri.fsPath] || []);
+			delete openDocuments[uri.fsPath];
+		}
+	});
+	for (const doc of vscode.workspace.textDocuments) {
+		const uri = doc.uri;
+		if (uri.scheme === 'file') {
+			openDocuments[uri.fsPath] = true;
+		}
+	}
+
+	return {
+		update(content: BuildLogContent) {
+			diagnosticsByPath = {};
+
+			if (Array.isArray(content)) {
+				for (const item of content) {
+					const { path, line, column, message } = item;
+					if (typeof path === 'string' && typeof line === 'number' && typeof column === 'number' && typeof message === 'string') {
+						let ds = diagnosticsByPath[path];
+						if (!ds) {
+							ds = diagnosticsByPath[path] = [];
+						}
+						ds.push(new vscode.Diagnostic(new vscode.Range(line - 1, column - 1, line - 1, column), message));
+					}
+				}
+			}
+
+			collection.clear();
+
+			for (const path in diagnosticsByPath) {
+				if (!openDocuments[path]) {
+					const uri = vscode.Uri.file(path);
+					collection.set(uri, diagnosticsByPath[path]);
+				}
+			}
+		},
+		dispose() {
+			collection.dispose();
+			onTextDocOpen.dispose();
+			onTextDocClose.dispose();
+		}
+	}
+
 }
 
 export function deactivate() { }

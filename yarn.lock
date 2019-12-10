@@ -711,7 +711,7 @@ typescript@^3.6.4:
   resolved "https://registry.yarnpkg.com/typescript/-/typescript-3.7.3.tgz#b36840668a16458a7025b9eabfad11b66ab85c69"
   integrity sha512-Mcr/Qk7hXqFBXMN7p7Lusj1ktCBydylfQM/FZCk5glCNQJrCUKPkMHdo9R0MTFWsC/4kPFvDS0fDPvukfCkFsw==
 
-vscode-test@^1.2.2:
+vscode-test@^1.2.3:
   version "1.2.3"
   resolved "https://registry.yarnpkg.com/vscode-test/-/vscode-test-1.2.3.tgz#b7be4e0b6113be425993efdf0a46a70b15a65a7e"
   integrity sha512-mKRTNso33NaUULiPBFg6zRjyntjcCpIgkrogyPQuKlvoQREQR8jLKN5UD4L5rkTSD+oBhcKtaLR2/g34FexURw==
