@@ -25,7 +25,7 @@ function updateBuildLogWatchers(): void {
 		for (const folder of vscode.workspace.workspaceFolders) {
 			if (folder.uri.scheme === 'file') {
 				buildLogWatchers.push(createBuildLogWatcher(folder));
-			};
+			}
 		}
 	}
 }
@@ -114,7 +114,9 @@ function createDiagnosticsCollector(outFile: string): DiagnosticsCollector {
 						if (!ds) {
 							ds = diagnosticsByPath[path] = [];
 						}
-						ds.push(new vscode.Diagnostic(new vscode.Range(line - 1, column - 1, line - 1, column), message));
+						const diagnostic = new vscode.Diagnostic(new vscode.Range(line - 1, column - 1, line - 1, column - 1), message);
+						diagnostic.source = 'yarn watch';
+						ds.push(diagnostic);
 					}
 				}
 			}
@@ -133,7 +135,7 @@ function createDiagnosticsCollector(outFile: string): DiagnosticsCollector {
 			onTextDocOpen.dispose();
 			onTextDocClose.dispose();
 		}
-	}
+	};
 
 }
 
