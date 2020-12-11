@@ -9,6 +9,8 @@ type BuildLogContent = { path: string, line: number, column: number, message: st
 
 const buildLogWatchers: vscode.Disposable[] = [];
 
+const logFileNames = ['log', 'log_extensions'];
+
 export function activate(context: vscode.ExtensionContext) {
 
 	console.log('Extension "vscode-track-build-errors" is now active');
@@ -24,15 +26,18 @@ function updateBuildLogWatchers(): void {
 	if (vscode.workspace.workspaceFolders) {
 		for (const folder of vscode.workspace.workspaceFolders) {
 			if (folder.uri.scheme === 'file') {
-				buildLogWatchers.push(createBuildLogWatcher(folder));
+				for (const logFileName of logFileNames) {
+					buildLogWatchers.push(createBuildLogWatcher(folder, logFileName));
+				}
 			}
 		}
 	}
 }
 
-function createBuildLogWatcher(folder: vscode.WorkspaceFolder): vscode.Disposable {
-	const outFilePath = path.join(folder.uri.fsPath, '.build', 'log');
-	const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, '.build/log'));
+function createBuildLogWatcher(folder: vscode.WorkspaceFolder, logFileName: string): vscode.Disposable {
+	const outFilePath = path.join(folder.uri.fsPath, '.build', logFileName);
+	const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, '.build/' + logFileName));
+
 	let collector: DiagnosticsCollector | undefined;
 
 	watcher.onDidCreate(readBuildLog);
