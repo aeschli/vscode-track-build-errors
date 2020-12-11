@@ -13,7 +13,7 @@
 	"bugs": {
 		"url": "https://github.com/aeschli/vscode-track-build-errors/issues"
 	},
-	"version": "0.0.2",
+	"version": "0.0.3",
 	"engines": {
 		"vscode": "^1.40.0"
 	},
